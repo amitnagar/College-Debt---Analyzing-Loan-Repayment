@@ -1,0 +1,304 @@
+---
+title: "College Debt - Analyzing Loan Repayment"
+author: "Amit Nagar"
+date: "November 30, 2015"
+output: html_document
+---  
+***
+#Abstract
+The debt burden associated with higher education is a well-known problem. Students invariably incur this debt during their college days and continue to carry it long after graduating. Their ability to repay is dependent upon a host of factors like degree completion, duration of their stay in college, their future earning power etc. It is also impacted by their other financial commitments though this is not factored into this data set or analysis. Debt acquired in process of getting higher education stands to impact financial well-being of a student long after they are out of college.
+
+In this paper, we use techniques of explanatory analysis to gather insights into the repayment patterns of the college debt.   We note that repayment is defined as a fraction of students in an institution making payments towards their federal loan.  We demonstrate that Explanatory Analysis helps us develop a better understanding of the relevant data.  We contend that Explanatory Analysis should be a prerequisite to any predictive or inferential analysis of a data set.  Such analysis helps us develop a better understanding and intuition of data.  It also assists in interpretation of the inferences or predictions that are derived subsequently. 
+
+Keywords: College Debt, Data Science, Explanatory Data Analysis, R   
+
+******
+
+#Introduction
+```{r warning=FALSE, echo=FALSE, message=FALSE}
+source("configurations.R")
+#source("dataCleanup.R")
+#source("featureselection.R")
+#source("massageData.R")
+#source("exploratoryAnalysis.R")
+
+library(dplyr)
+library(DT)
+library(plotrix)
+```
+
+```{r warning=FALSE, echo=FALSE}
+#read configurations
+config = get.Configurations()
+datafiles = config[[1]]
+scorecard.data = config[[2]]
+```
+
+US Department of Education (DoE) and Kaggle[1] have made available data related to College Debt.  As per the published documentation, it consists of the data collected from 1996 to 2013 and sourced from:  
+
+>  
+*	federal reporting by institutions, 
+*	federal financial aid, and 
+*	tax information.   
+
+In this paper, we focus on 2013 data only.  The data is grouped under categories as shown in Table 1.  Each category comprises of a number of variables.  
+  
+  
+```{r warning=FALSE, echo=FALSE}
+datatable(scorecard.data, rownames = FALSE, list(pagelength=25))
+```
+
+Our focus in this analysis is on the repayment rates.  We feel that repayment rate is a key metric in this data set that will be of interest to decision makers. By definition,
+"repayment rates depict the fraction of borrowers at an institution who have not defaulted on their federal loans and who are making progress in paying them down (i.e. have paid down at least $1 in the principal balance on their loans) after leaving school (RPY_*YR_RT). The rates are available for 1 (_1YR_RT), 3 (_3YR_RT), 5 (_5YR_RT), and 7 (_7YR_RT) years after leaving school." 
+
+We make the following observations about the above definition:  
+
+>  
+*	repayment rate is strictly a proportion statistic at an aggregate (institution) level.  It tells us nothing about the dollar values associated with the repayment. 
+*	the statement "i.e. have paid down at least $1 in the principal balance on their loans" shows that repayment rate is not a good indicator of the overall health of the outstanding loan in dollar terms.   The statistic will remain high even if most students are repaying a token principal amount.   
+
+In particular, we focus on the 7-year repayment rate, namely, RPY_7YR_RT. Going forward, we refer to it as repayment rate. Our objective is to gain insight into the standalone repayment rate patterns, detect outliers, study interaction of repayment rates with other variables etc.  Specifically, we consider repayment rate as the dependent or response variable and the remaining variables as independent or explanatory variables.  
+
+Our approach in this paper is perform an explanatory analysis of the provided data set to help us develop a better understanding of the repayment rates.  In general, we feel that such an explanatory analysis should always be a pre-requisite before deriving any inferences or predictions from a data set.  Exploratory Analysis results in better intuition while assisting in interpretation of the results.  We also refer to Explanatory Analysis book published by Peng[2] in this regard.  
+
+Clearly, the exploration and subsequent modeling of the data is a continuous process.   This is a generic requirement not limited to the scorecard data set.  In production scenarios, new data will introduce new patterns requiring us to repeat the analysis.  We also note, that the current analysis is also based on a single data set.  This is to allow us to maintain focus solely on the analysis aspects rather than on the volume and other data issues that will creep up when we deal with all available data sets from 1996 - 2013.   
+
+For the purpose of this analysis, we have chosen the 2013 data set, namely, MERGED2013_PP.csv.   This provides us with the most recent data published by DoE.  At this point, we note that the availability of data in machine readable (csv) format allows us to circumvent an important step in a Data Science project, namely, data gathering and the processes associated with it. Therefore, we can directly dive into the analysis of the data set.   
+
+## Exploratory Data Analysis
+Our analysis begins by examining the missing values in the data set.   We then focus on the patterns within the 7-yr repayment rate, repayment rates across years and in relation to other variables.   We also examine the correlations between 7-yr repayment rate and other variables.  In this context, we discuss the implications of missing values on correlations and cite Lewis[3] as a useful reference on this topic.
+
+### Missing Data Analysis
+Examining the data in the csv file, we notice a number of data points marked as NULL or "Privacy Suppressed".  This is as shown in figure 1.  These constitute the missing values in the data set.  
+
+```{r warning=FALSE, echo=TRUE}
+if ( !( "scorecard" %in% ls() )){
+   scorecard = (read.csv(datafiles,header=TRUE, sep=",", stringsAsFactors = FALSE,strip.white = TRUE, na.strings = c("NULL","PrivacySuppressed
+")))
+}
+```
+
+```{r warning=FALSE, echo=FALSE}
+scorecard[10:25, 1365:1375]
+```
+
+We will like to understand the extent of this missing data.  Is this a localized occurrence in the above sample set or a symptom of a larger occurrence?  In order to analyze this in R, we need to convert the data marked NULL or Privacy Suppressed to NA.  NA is a (vector) data type in R supported by language features that allow for special processing.  We achieve this conversion when reading the data from the csv file using the *read.csv* command shown above.
+
+For the remainder of the paper, we will use terms "missing" and "NA" interchangeably.
+
+Let us first examine the prevalence of the NAs in the rows of the data set.  R provides a complete.cases command which returns a logical vector indicating which rows of the data set are missing.  The sum command counts the TRUE values to give us a count of the missing values in the data set.    
+
+```{r warning=FALSE, echo=FALSE}
+col.NA = as.data.frame(apply(scorecard, 2, function(x) sum(is.na(x))))
+scorecard.2 = scorecard[-which(col.NA[,1] == 7804)]
+scorecard.2 = apply(scorecard.2, 2, function(x) as.numeric(x))
+```
+
+```{r warning=FALSE, echo=TRUE}
+sum(!complete.cases(scorecard.2))
+```
+
+Note that above command is querying the scorecard data set for rows which are not (!) complete cases.  The number of rows returned is 7804.  This means that each row of the scorecard data set has at least one missing value.   
+
+In fact, a quick computation, as shown below, indicates that the minimum number of NAs in the rows of the data set is 70.10% and maximum is 98.96%.   We note that the below code is borrowed from a post in STACKTRACE forum. 
+
+```{r warning=FALSE, echo=TRUE}
+Min.missing = paste(sprintf("%.2f", min(apply(scorecard, 1, function(x) sum(is.na(x)))/length(scorecard))*100),"%")
+Max.missing = paste(sprintf("%.2f", max(apply(scorecard, 1, function(x) sum(is.na(x)))/length(scorecard))*100),"%")
+
+missing.count = as.data.frame(cbind(Min.missing, Max.missing))
+
+datatable(missing.count, rownames = FALSE, list(pagelength=1, dom = "t"))
+```
+
+Next, we examine the columns for missing values. This is even more revealing.  In this data set, there are 1174 (67.4%) columns in which all values are missing.   We believe, in such cases, imputation is neither feasible nor a useful strategy.  In other words, we cannot substitute NAs for any meaningful value.   Therefore, we remove all the 1174 NA columns from further consideration from the data set.  The resulting data set has a dimension of 7804 (rows) by 555 (columns).   The dimension from a column perspective is reduced considerably without loss of any information.   
+
+Arguably, we could remove the rows with large number of missing values just as we have done for the columns.   However, we have focused our attention on columns so as to reduce the number of variables in the model.  
+
+An important consideration and next step in missing data analysis will be to determine if it is a random or non-random occurrence. 
+
+Also, the fact that the data set has a high number of missing values needs be factored in when making conclusions as they impact the validity and interpretability of the results, McKnight[4].   
+
+###Exploring Repayment Patterns
+
+####7-year repayment rate scatter
+Figure 2 shows a scatter plot of the repayment rates.  There are no discernible patterns in the plot which provide an indication of the shape of underlying distribution. However, there are some interesting insights:  
+
+>  
+*	20-30 institution have a perfect repayment rate of 1.0.   Are there any learnings in this data to understand what these institutions might be doing different?  
+*	another interesting pattern that seems to emerge is around clustering of the repayment rates  
++ [0.7, 1.0] for first 4000 data points , and  
++	[0.6, 0.4] for the data points from 4000 onwards.  This is quite an interesting pattern as we have not sorted the data set on repayment rates. Why is there a higher proportion of non-defaulters for first 4000 institutions?  
+* .	relatively fewer institutions have repayment rates under 0.4.  Again, what is driving a higher proportion of default at these institutions?
+
+```{r warning=FALSE, echo=FALSE}
+plot(1:nrow(scorecard.2), scorecard.2[,"RPY_7YR_RT"],  pch = 19, col = rgb(0, 0, 0, 0.15), xlab = "", ylab="repaymnent rate", main = "Repayment Scatter")
+```
+
+####Across the Years
+Comparing the repayment rate across 3, 5, and 7 years (figure 3), we notice the following:  
+
+>  
+*	Increasingly prominent negative skew indicating a clustering of data towards larger repayment rates as time progresses.  This means a greater proportion of students begin to make repayments towards their loans  
+*	Mean (green line) becomes less than the median (red line) in 7th year; this is in accordance with the observed negative skew  
+*	Median value shows an appreciable jump from 5th to 7th year  
+*	Number of institutions with repayment rate 1.0 doubles from 5th to 7th year    
+
+```{r warning=FALSE, echo=FALSE}
+RPY_3YR = scorecard.2[,"RPY_3YR_RT"]
+s3 <- summary(RPY_3YR)
+RPY_5YR = scorecard.2[,"RPY_5YR_RT"]
+s5 <- summary(RPY_5YR)
+RPY_7YR = scorecard.2[,"RPY_7YR_RT"]
+s7 <- summary(RPY_7YR)
+```
+
+```{r warning=FALSE, echo=FALSE}
+hist(RPY_3YR, breaks = 15)
+abline(v=s3[4], lwd=4, col="green")
+abline(v=s3[3], lwd=4, col="red")
+rug(scorecard.2[,"RPY_3YR_RT"])
+
+hist(RPY_5YR, breaks = 15)
+abline(v=s5[4], lwd=4, col="green")
+abline(v=s5[3], lwd=4, col="red")
+rug(scorecard.2[,"RPY_5YR_RT"])
+
+hist(RPY_7YR, breaks = 15)
+abline(v=s7[4], lwd=4, col="green")
+abline(v=s7[3], lwd=4, col="red")
+rug(scorecard.2[,"RPY_7YR_RT"])
+```
+
+
+Now, let us visualize the data using boxplots.  The boxplots are generated for 3-year, 5-year, and 7-year repayment rate values (figure 4).  One purpose of using the boxplot is to detect the presence of outliers.  
+
+```{r echo=FALSE, warning=FALSE}
+   par(mfrow = c(1,3))
+    
+   boxplot(RPY_3YR, data=scorecard.2)
+   rug(jitter(RPY_3YR),side = 2)
+   abline(h = mean(RPY_3YR, na.rm = TRUE), lty = 1, col = "RED")
+   
+   boxplot(RPY_5YR, data=scorecard.2)
+   rug(jitter(RPY_5YR),side = 2)
+   abline(h = mean(RPY_5YR, na.rm = TRUE), lty = 1, col = "RED")
+   
+   boxplot(RPY_7YR, data=scorecard.2)
+   rug(jitter(RPY_7YR),side = 2)
+  abline(h = mean(RPY_3YR, na.rm = TRUE), lty = 1, col = "RED")
+```
+  
+    
+>  
+*	No significant outliers are detected.   
+*	There is one repayment rate equal to 0.2 in the 7-year plot moves outside of the 1.5xIQR (inter quartile range) boundary.  This makes it an outlier.  Further analysis on the specific institution is likely to yield further insights.  
+*	A slightly lower density of data points on the lower parts of the y axis (< 0.3) is noted in the 7-year boxplot.  This again points to a negative skew in the distribution of the data points.
+
+####Relative to other variables
+Next, let us visualize how the repayment rates vary with respect to variables that can take only a few values.  We identify two variables for this comparison: CONTROL and REGION.  
+By definition,  
+CONTROL identifies whether the institution's governance structure is public (1), private nonprofit (2), or private for-profit (3).  
+REGION - is not formally defined in the data set documentation.  However, it is one of the fields in the data set with values ranging from 1 - 9.
+
+```{r warning=FALSE, echo=TRUE}
+boxplot(RPY_7YR_RT ~ CONTROL, data=scorecard.2)
+```
+
+The boxplot in figure 5 depicts a very interesting pattern in the middle graphic for private nonprofit institutions.  The median value is higher than either of public or private for-profit institutions.   However, it also has a significant number of outliers at the lower end.   A high median indicates half the institutions showing a very strong repayment data with a significant number of institutions depicted as outliers on low end of repayment, roughly 0.5 or below.  
+What is driving this contrast in the repayment rates in institutions categorized as private nonprofit?  
+Looking more closely there are about 126 such outlier institutions with repayment rates less than 0.5.   We plot the repayment rates of these 126 data points in Figure 6.   We do not see a discernible pattern except for clustering of institutions around 0.4 and 0.5.  A deeper dive is necessary in this smaller data set and perhaps with domain experts to understand the reason for this odd behavior of the repayment rate data.
+
+```{r warning=FALSE, echo=TRUE}
+filtered.by.control = filter( as.data.frame(scorecard.2), RPY_7YR < 0.6 & CONTROL == 2)    
+
+plot(1:126, filtered.by.control[,"RPY_7YR_RT"], main="Private for-profit Outliers", xlab="", ylab="repayment rates")
+```
+
+
+
+From a region perspective, outliers in region 4 and the boxplot with lowest median value invite deeper analysis as shown in figure 7.
+
+```{r warning=FALSE, echo=TRUE}
+boxplot(RPY_7YR_RT ~ region, data=scorecard.2)
+```
+
+### Correlations
+Next, let us examine how RPY_7YR_RT relates to dependent variables by studying the linear correlations between them. For this exercise, we ignore the 1st twelve columns of the reduced data set. These columns are categorized under ROOT and About the School headers in the data set documentation and include variables like ids, names, URL etc.
+In the last section, we showed a high occurrence of missing (NA) values in the data set.  Correlation analysis needs to factor in the impact of missing values.   The R function for calculating correlation has a parameter called use which controls how the missing values are treated when computing the pairwise correlations. By definition, the use parameter can take the following values:  
+
+>  
+*	everything  			- a resulting correlation value will be NA whenever one of its contributing observations is NA.
+*	all.obs 			- presence of missing observations will produce an error.
+*	complete.obs 		- missing values are handled by casewise deletion (and if there are no    complete cases, that gives an error). 
+*	pairwise.complete.obs 	- correlation or covariance between each pair of variables is computed using all complete pairs of observations on those variables. This can result in covariance or correlation matrices which are not positive semi-definite, as well as NA entries if there are no complete pairs for that pair of variables.  
+As explained in Lewis[3], the results can be dramatically different with each option when computing the correlations on a dataset with missing values.  Lewis[3] recommends using option "everything" and warns against using "pairwise.complete.obs".  
+With this cautionary note, we look at the correlations derived using the four options for use parameter.  
+
+
+Correlation between RPY_7YR_RT and other variables using various 'use' options:  
+
+>
+* use="everything"
+All correlations are reported to be NA for our data set. This is a reasonable result with this option due to high incidence of NA values in the data set.	
+* use="all.obs"
+gives an error when computing correlations
+* use="complete.obs"
+gives an error when computing correlations
+* use = "complete.pairwise.obs"
+only viable option for computing correlations.  We discuss the results of this option next.
+
+```{r warning=FALSE, echo=TRUE}
+cor.df = data.frame(cor(as.numeric(scorecard.2[,"RPY_7YR_RT"]) , scorecard.2[,12:555], use="pairwise.complete.obs"))
+
+cor.transpose = t(cor.df[order(cor.df,decreasing = FALSE)])
+
+hist(cor.transpose, main="RPY_7YR_RT vs independent variables", xlab="Correlations", breaks=20)
+```
+
+The key observations we make from figure 8 are that repayment rate has:  
+
+>    
+*	zero correlation with a large number of variables.  
+*	more variables have high positive correlation (close to 1) than those with a hiigh negative correlation (close to -1).   
+
+Next, we examine the top n negative and positive correlations.  
+
+For negative correlation, we note that variables representing demographics such as,  
+
+>  
+*	family income,  
+*	dependents,  
+*	first generation students  
+
+are highly correlated with repayment rate. For example, PCT_INC_LO has a correlation of -0.80901.   PCT_INC_LO is the percentage of TITLE-IV students (who receive federal aid) who family income is in income bracket of $0-$30,000.  The negative correlation implies that as percentage of students whose family income is in bracket $0-$30,000 goes up, the repayment rate will go down leading fewer defaults.   
+
+Also, DEP_INC_PCT_LO and PAR_ED_PCT_1STGEN have high negative correlation with the repayment rates.  
+
+A higher proportion of students who are from low income families ($0-$30,000) and who are categorized as dependents negatively impact the repayment rate.   We note that multiple factors are considered when qualifying a students as dependent.    
+
+Likewise, a higher percentage of first generation FAFSA students tends to bring down the repayment rate.  
+
+The positive spectrum of the correlations is not so interesting.  Most of the values therein indicate a high correlation of repayment rate with a sub-category of repayment rate, say, female repayment rate (FEMALE_RPY_*) etc. This again makes sense since the overall repayment rate is likely to move in same direction as the finer grained components of the repayment rates.   
+
+###Summary
+In this paper, we have focused on missing data, visual exploration of various aspects of the variable of interest and its relationships to other variables, and correlations between repayment rate and other variables in the data set.  In particular,  
+
+>  
+*	we notice a significant amount of missing data.  We believe it is critical to understand the origins of this missing data.   In absence of access to the DoE team that collected this data it is impossible for us to understand the underlying rationale of missing data.    
+*	missing data impact the subsequent exploratory analysis processes and makes their interpretation challenging.  
+*	imputing missing data is another challenge although it is not discussed in any detail in this paper.  
+*	repayment scatter plot hints at a possible clustering of data between 2 groups of institutions.  
+*	histograms of 3-year, 5-year, 7-year repayment data indicate an increasingly negative skew with repayment rates improving as time progresses.    
+*	significant number of outliers are noted in repayment rates for private for-profit institutions indicating that a rather small proportion of students are repaying their loans even after 7 years in these institutions
+*	 observations about correlation are noted with caution even though they seem intuitive.    
+
+In conclusion, we note that Exploratory Analysis is a critical component of Data Science. It helps develop a deeper understanding of the provided data. It also helps in interpretability of the results from predictive or inferential analysis that will follow the exploration phase. There are many techniques that can be used for such an analysis but clearly we need to keep the scope well defined and have well established boundaries around the exploration phase.   Hence, in this paper, we have limited ourselves to certain aspects of Explanatory Analysis only. 
+
+
+******
+###References  
+[1] https://www.kaggle.com/c/us-dept-of-education-college-scorecard, "Kaggle"  
+[2] "Exploratory Data Analysis with R". LeanPub. Peng, Roger, 2015  
+[3] "Pairwise-complete correlation considered dangerous", Lewis, B.W., 5/25/2015 http://bwlewis.github.io/covar/missing.html    
+[4] "Missing Data: A Gentle Introduction", Patrick E. McKnight et al, 2007   
